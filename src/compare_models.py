@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, log_loss)
 
-from src.ml_utils import FEATURES, load_candidate_data, make_group_splits, make_models
+from src.ml_utils import (FEATURES, load_candidate_data, make_group_splits, make_holdout_split, make_models, top1_accuracy)
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
@@ -19,8 +19,10 @@ OUT.mkdir(exist_ok=True)
 
 def main():
     data = load_candidate_data(DATA_FILES)
-    splits = make_group_splits(data, n_splits=5)
-    X, y = data[FEATURES], data["label"]
+    train_idx, test_idx = make_holdout_split(data, test_groups=10, random_state=42)
+    train_data = data.iloc[train_idx].reset_index(drop=True)
+    splits = make_group_splits(train_data, n_splits=5)
+    X, y = train_data[FEATURES], train_data["label"]
     rows = []
     for name, model in make_models().items():
         fold_scores = []
@@ -42,11 +44,7 @@ def main():
                 row["log_loss"] = log_loss(y.iloc[test_idx], probs,
                                            labels=model.classes_)
                 positive = probs[:, list(model.classes_).index(1)]
-                part = data.iloc[test_idx][["trip_id", "gps_index", "label"]].copy()
-                part["score"] = positive
-                chosen = part.loc[part.groupby(["trip_id", "gps_index"])["score"].idxmax()]
-                row["top1_accuracy"] = accuracy_score(chosen["label"],
-                                                       np.ones(len(chosen), dtype=int))
+                row["top1_accuracy"] = top1_accuracy(train_data.iloc[test_idx], positive)
             fold_scores.append(row)
         rows.append({"model": name, **{
             metric: float(np.nanmean([fold[metric] for fold in fold_scores]))
@@ -55,6 +53,7 @@ def main():
     result = pd.DataFrame(rows).sort_values("macro_f1", ascending=False)
     result.to_csv(OUT / "model_comparison.csv", index=False)
     print(result.to_string(index=False))
+    print(f"Model selection used {train_data['trip_id'].nunique()} trips; 10 trips are reserved for final evaluation.")
     print("\nSaved results/model_comparison.csv")
 
 
