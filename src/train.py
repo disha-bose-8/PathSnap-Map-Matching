@@ -26,10 +26,19 @@ def main():
             RuntimeWarning,
         )
     X, y = data[FEATURES], data["label"]
+    tuning_file = ROOT / "results" / "bayesian_optimization.json"
+    tuned_params = {}
+    if tuning_file.exists():
+        tuning = json.loads(tuning_file.read_text())
+        tuned_params = tuning.get("best_params", {})
+        print("Using Optuna-selected hyperparameters.")
+    else:
+        print("No Optuna results found; using baseline Random Forest settings.")
+
     model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("classifier", RandomForestClassifier(
-            n_estimators=300, class_weight="balanced_subsample",
+            **tuned_params, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1,
         )),
     ])
