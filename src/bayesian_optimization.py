@@ -9,7 +9,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import f1_score
 
-from src.ml_utils import FEATURES, load_candidate_data, make_group_splits
+from src.ml_utils import FEATURES, load_candidate_data, make_group_splits, make_holdout_split
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
@@ -19,8 +19,10 @@ DATA_FILES = ([COMBINED_DATA] if COMBINED_DATA.exists()
 
 def main():
     data = load_candidate_data(DATA_FILES)
-    splits = make_group_splits(data, n_splits=5)
-    X, y = data[FEATURES], data["label"]
+    train_idx, _ = make_holdout_split(data, test_groups=10, random_state=42)
+    train_data = data.iloc[train_idx].reset_index(drop=True)
+    splits = make_group_splits(train_data, n_splits=5)
+    X, y = train_data[FEATURES], train_data["label"]
 
     def objective(trial):
         params = {
@@ -54,6 +56,8 @@ def main():
         "best_macro_f1": study.best_value,
         "best_params": study.best_params,
         "trials": len(study.trials),
+        "training_trips": int(train_data["trip_id"].nunique()),
+        "holdout_trips_reserved": 10,
         "note": "Scores are valid only with multiple independent trip groups "
                 "and trustworthy labels.",
     }

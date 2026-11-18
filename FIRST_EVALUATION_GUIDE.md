@@ -34,7 +34,7 @@ The candidate generator currently selects up to 8 candidates from the 20 nearest
 - Invalid/missing feature values are converted to numeric values and imputed with the median inside each model pipeline.
 - Scaling is applied for models sensitive to feature magnitude, such as Logistic Regression and KNN.
 - The candidate labels are derived from the provided reference route and are therefore provisional. They are not independent ground truth.
-- The current generated candidate summary covers two trips. More trip groups are needed for a reliable generalisation estimate and the separate 10-trip student evaluation.
+- The uploaded candidate dataset contains 80 trip groups. For this review, reserve 10 complete trips as a final holdout (fixed seed 42) and use the other 70 for model selection/tuning. The holdout trip IDs are 1, 13, 20, 22, 29, 33, 39, 41, 42, and 88. These are dataset trip IDs; do not describe them as student identities unless the team confirms that mapping.
 
 ## 2. Model selection and training (Person 2)
 
@@ -47,7 +47,7 @@ Five classifiers are compared:
 
 ### Validation design
 
-GroupKFold uses trip_id as the group. All candidate rows from one trip stay together in either training or validation. This avoids leakage from nearly identical GPS observations within the same journey. The number of folds is capped by the number of distinct trips.
+The 10-trip holdout is separated first using GroupShuffleSplit by trip_id. The five-fold GroupKFold model-selection and Optuna tuning runs only inside the remaining 70 training trips. All candidate rows from a trip stay in one partition, preventing journey-level leakage.
 
 ### Metrics
 
@@ -61,7 +61,7 @@ The comparison script saves results/model_comparison.csv. The plot script create
 
 ### Final training and optimisation
 
-The training script fits a Random Forest on all available labelled training candidates and saves:
+The holdout evaluation fits a baseline Random Forest on the 70 training trips and reports results only on the untouched 10-trip holdout. After the holdout result is recorded, the final training script fits a deployment Random Forest on all 80 available labelled trips and saves:
 - models/candidate_classifier.joblib
 - models/metadata.json
 
@@ -75,6 +75,7 @@ Run from the repository root:
 pip install -r requirements.txt
 python -m pytest -q
 python -m src.compare_models
+python -m src.evaluation
 python -m src.train
 python -m src.plot_results
 ```
@@ -95,8 +96,8 @@ At this stage, the candidate labels come from the supplied reference route, so w
 
 ## 5. Current evidence and limitations
 
-- The repository has a candidate-generation summary for two trips.
+- The supplied training candidate CSV contains 1,667,336 rows across 80 trips (80 trip groups).
 - The automated unit-test workflow has passed for the latest test commit.
 - A separate GitHub Actions workflow runs baseline model comparison, final baseline training, and creates a downloadable artifact.
 - Do not report model scores until the ML review workflow completes and its artifact has been inspected.
-- Do not claim 10-student testing is complete unless ten separate test trips have actually been evaluated.
+- The 10 held-out trip evaluation is a trip-level holdout; it is not proof that the trips correspond to ten different students. Confirm student ownership before calling it a 10-student test.
