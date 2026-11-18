@@ -14,29 +14,52 @@ on:
 jobs:
   model-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Check whether candidate dataset is available
+        id: dataset
+        shell: bash
+        run: |
+          if [ -f "results/all_train_candidates.csv" ] || compgen -G "results/*_candidates.csv" > /dev/null; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Candidate dataset found. Running the ML review."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=ML review skipped::No candidate CSV found in results/. Add results/all_train_candidates.csv to run model training."
+          fi
+
       - name: Compare five baseline models
+        if: steps.dataset.outputs.available == 'true'
         run: python -m src.compare_models
+
       - name: Train final baseline model
+        if: steps.dataset.outputs.available == 'true'
         run: python -m src.train
+
       - name: Generate comparison visualisation
+        if: steps.dataset.outputs.available == 'true'
         run: python -m src.plot_results
+
       - name: Upload review outputs
+        if: steps.dataset.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: pathsnap-ml-review-results
+          if-no-files-found: warn
           path: |
             results/model_comparison.csv
             results/model_comparison.png
