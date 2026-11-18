@@ -9,12 +9,10 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report
 
-from src.ml_utils import FEATURES, load_candidate_data
+from src.ml_utils import FEATURES, load_candidate_data, resolve_candidate_files
 
 ROOT = Path(__file__).resolve().parents[1]
-COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
-DATA_FILES = ([COMBINED_DATA] if COMBINED_DATA.exists()
-              else sorted((ROOT / "results").glob("*_candidates.csv")))
+DATA_FILES = resolve_candidate_files(ROOT)
 
 
 def main():
