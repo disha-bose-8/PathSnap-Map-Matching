@@ -14,11 +14,7 @@ Place one or more CSV files in `results/` with filenames ending in
 - `distance`, `heading_diff`, `speed`, `time_gap`: model features
 - `label`: binary candidate label (0 or 1)
 
-The current repository sample contains only trip `00000001`. GroupKFold
-requires at least two distinct trips, so comparison, evaluation, and Optuna
-scripts intentionally stop until more trips are added. Do not replace this
-check with random row-level splitting: that would leak observations from the
-same trip across train and validation sets.
+The uploaded dataset contains 80 distinct trips. The pipeline reserves 10 whole trips for final evaluation using a deterministic `GroupShuffleSplit` (`random_state=42`), leaving 70 trips for model selection and tuning. Five-fold `GroupKFold` runs only inside those 70 training trips. Do not replace this with random row-level splitting: that would leak observations from the same trip across partitions. The fixed 10-trip holdout is `1, 13, 20, 22, 29, 33, 39, 41, 42, 88` for this dataset and split seed.
 
 ## Install and run
 
@@ -34,8 +30,7 @@ python -m src.plot_results
 python -m pytest -q
 ```
 
-Outputs are written under `results/` and the fitted model plus metadata are
-written under `models/`. The plotting script creates report-ready PNGs when
+`compare_models` selects among the five baselines using grouped CV on the 70 training trips. `evaluation` fits a baseline Random Forest on those 70 trips and reports the untouched 10-trip holdout metrics. Optuna also tunes only on the 70 training trips. Finally, `train` fits the deployment model on all 80 trips after holdout evaluation has been recorded. Outputs are written under `results/` and the fitted model plus metadata are written under `models/`. The plotting script creates report-ready PNGs when
 comparison and Optuna result files exist. The unit tests run locally and also
 run automatically through GitHub Actions on pushes and pull requests.
 
