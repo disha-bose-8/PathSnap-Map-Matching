@@ -30,16 +30,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check whether candidate dataset is available
+      - name: Validate candidate dataset
         id: dataset
         shell: bash
         run: |
-          if [ -f "results/all_train_candidates.csv" ] || compgen -G "results/*_candidates.csv" > /dev/null; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Candidate dataset found. Running the ML review."
-          else
+          if [ ! -f "results/all_train_candidates.csv" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=ML review skipped::No candidate CSV found in results/. Add results/all_train_candidates.csv to run model training."
+            echo "::notice title=ML review not run::The full results/all_train_candidates.csv file is missing."
+            exit 0
+          fi
+
+          TRIPS=$(python - <<'PY'
+          import pandas as pd
+          path = "results/all_train_candidates.csv"
+          data = pd.read_csv(path, usecols=["trip_id"])
+          print(data["trip_id"].nunique())
+          PY
+          )
+          echo "Detected $TRIPS distinct trip IDs."
+          if [ "$TRIPS" -lt 11 ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=ML review not run::Only $TRIPS distinct trips are present. The 70/10 grouped holdout requires at least 11 trips; the supplied review dataset should contain 80."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Compare five baseline models
