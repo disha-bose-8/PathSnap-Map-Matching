@@ -28,18 +28,25 @@ REQUIRED_COLUMNS = ["trip_id", "gps_index", *FEATURES, "label"]
 
 
 def resolve_candidate_files(root: str | Path) -> list[Path]:
-    """Find the full candidate CSV, extracting the committed ZIP when needed.
-
-    Prefer results/all_train_candidates.csv. If it is absent, safely stream
-    all_train_candidates.csv from results/all_train_candidates.zip. Only fall
-    back to per-trip candidate CSVs when the combined dataset/archive is absent.
-    """
+    """Find the complete candidate dataset, preferring the full ZIP if needed."""
     results_dir = Path(root) / "results"
     combined = results_dir / "all_train_candidates.csv"
-    if combined.exists():
-        return [combined]
-
     archive = results_dir / "all_train_candidates.zip"
+
+    # A stale or partial combined CSV must not hide the full archived dataset.
+    if combined.exists():
+        try:
+            trip_count = pd.read_csv(combined, usecols=["trip_id"])["trip_id"].nunique()
+        except (ValueError, KeyError, pd.errors.ParserError):
+            trip_count = 0
+        if trip_count > 10:
+            print(f"Using {combined.name} ({trip_count} distinct trips).")
+            return [combined]
+        print(
+            f"Found only {trip_count} distinct trips in {combined.name}; "
+            "checking the full ZIP archive."
+        )
+
     if archive.exists():
         with zipfile.ZipFile(archive) as zipped:
             members = [
@@ -51,19 +58,28 @@ def resolve_candidate_files(root: str | Path) -> list[Path]:
                     "Expected exactly one all_train_candidates.csv inside "
                     f"{archive.name}; found {len(members)}."
                 )
+            with zipped.open(members[0]) as source:
+                header = pd.read_csv(source, nrows=0).columns.tolist()
+            if "trip_id" not in header:
+                raise ValueError("The CSV inside the ZIP has no trip_id column.")
+            with zipped.open(members[0]) as source:
+                trip_count = pd.read_csv(source, usecols=["trip_id"])["trip_id"].nunique()
+            if trip_count <= 10:
+                raise ValueError(
+                    f"The ZIP archive contains only {trip_count} distinct trips; "
+                    "at least 11 are required for a 10-trip holdout."
+                )
             with zipped.open(members[0]) as source, combined.open("wb") as target:
                 shutil.copyfileobj(source, target, length=1024 * 1024)
-        print(f"Extracted full candidate dataset to {combined}")
+        print(f"Extracted full dataset ({trip_count} trips) to {combined}")
         return [combined]
 
     per_trip_files = sorted(results_dir.glob("*_candidates.csv"))
     if per_trip_files:
-        print(
-            "WARNING: Full candidate CSV/ZIP not found; using only "
-            f"{len(per_trip_files)} per-trip candidate file(s)."
+        raise ValueError(
+            "Full dataset unavailable: found only per-trip candidate CSV files. "
+            "Restore results/all_train_candidates.zip before running model evaluation."
         )
-        return per_trip_files
-
     raise FileNotFoundError(
         "Candidate data not found. Place results/all_train_candidates.csv "
         "or results/all_train_candidates.zip in the repository."
