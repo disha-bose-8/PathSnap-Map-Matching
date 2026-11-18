@@ -10,3 +10,4 @@ optuna
 pytest
 fastapi
 uvicorn
+tqdm
