@@ -9,6 +9,7 @@ on:
       - "results/*_candidates.csv"
       - "results/all_train_candidates.csv"
       - "requirements.txt"
+      - ".github/workflows/ml-review.yml"
 
 jobs:
   model-review:
