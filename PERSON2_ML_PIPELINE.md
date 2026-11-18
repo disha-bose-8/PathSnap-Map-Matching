@@ -30,10 +30,14 @@ python -m src.compare_models
 python -m src.evaluation
 python -m src.bayesian_optimization
 python -m src.train
+python -m src.plot_results
+python -m pytest -q
 ```
 
 Outputs are written under `results/` and the fitted model plus metadata are
-written under `models/`.
+written under `models/`. The plotting script creates report-ready PNGs when
+comparison and Optuna result files exist. The unit tests run locally and also
+run automatically through GitHub Actions on pushes and pull requests.
 
 ## Important label and evaluation caveat
 
