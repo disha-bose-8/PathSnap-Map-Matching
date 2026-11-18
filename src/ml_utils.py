@@ -31,6 +31,18 @@ def load_candidate_data(paths: Iterable[str | Path]) -> pd.DataFrame:
     if not frames:
         raise ValueError("No candidate CSV files were supplied.")
     data = pd.concat(frames, ignore_index=True)
+    # Accept Person 1's candidate-generator column names and normalise them
+    # to the stable schema consumed by the ML pipeline.
+    aliases = {
+        "gps_point_id": "gps_index",
+        "candidate_road_id": "candidate_arc_id",
+        "distance_to_road": "distance",
+        "heading_difference": "heading_diff",
+        "time_difference": "time_gap",
+    }
+    rename = {old: new for old, new in aliases.items()
+              if old in data.columns and new not in data.columns}
+    data = data.rename(columns=rename)
     missing = sorted(set(REQUIRED_COLUMNS) - set(data.columns))
     if missing:
         raise ValueError(f"Candidate data is missing columns: {missing}")
