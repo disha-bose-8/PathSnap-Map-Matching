@@ -60,18 +60,19 @@ def evaluate_partition(
         reference_labels = nearest_reference_arc_labels(
             track, reference_ids, graph
         )
+        candidate_sets = (
+            candidates.groupby("gps_index")["candidate_arc_id"]
+            .apply(lambda values: set(values.astype(int)))
+            .to_dict()
+        )
+        candidate_miss_rate = float(np.mean([
+            int(label) not in candidate_sets.get(index, set())
+            for index, label in enumerate(reference_labels)
+        ]))
         rows.append({
             "trip_id": trip_id,
             "gps_observations": len(track),
-            "candidate_miss_rate": float(np.mean([
-                label not in set(
-                    candidates.loc[
-                        candidates["gps_index"] == index,
-                        "candidate_arc_id",
-                    ].astype(int)
-                )
-                for index, label in enumerate(reference_labels)
-            ])),
+            "candidate_miss_rate": candidate_miss_rate,
             "classifier_only_nearest_reference_accuracy": float(
                 np.mean(
                     np.asarray(decoded.classifier_only_arc_ids)
