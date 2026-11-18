@@ -12,7 +12,9 @@ from sklearn.metrics import f1_score
 from src.ml_utils import FEATURES, load_candidate_data, make_group_splits
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_FILES = sorted((ROOT / "results").glob("*_candidates.csv"))
+COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
+DATA_FILES = ([COMBINED_DATA] if COMBINED_DATA.exists()
+              else sorted((ROOT / "results").glob("*_candidates.csv")))
 
 
 def main():

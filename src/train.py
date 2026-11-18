@@ -12,7 +12,9 @@ from sklearn.metrics import classification_report
 from src.ml_utils import FEATURES, load_candidate_data
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_FILES = sorted((ROOT / "results").glob("*_candidates.csv"))
+COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
+DATA_FILES = ([COMBINED_DATA] if COMBINED_DATA.exists()
+              else sorted((ROOT / "results").glob("*_candidates.csv")))
 
 
 def main():
@@ -26,10 +28,19 @@ def main():
             RuntimeWarning,
         )
     X, y = data[FEATURES], data["label"]
+    tuning_file = ROOT / "results" / "bayesian_optimization.json"
+    tuned_params = {}
+    if tuning_file.exists():
+        tuning = json.loads(tuning_file.read_text())
+        tuned_params = tuning.get("best_params", {})
+        print("Using Optuna-selected hyperparameters.")
+    else:
+        print("No Optuna results found; using baseline Random Forest settings.")
+
     model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("classifier", RandomForestClassifier(
-            n_estimators=300, class_weight="balanced_subsample",
+            **tuned_params, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1,
         )),
     ])
