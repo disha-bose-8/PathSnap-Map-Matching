@@ -43,6 +43,7 @@ def sample_frame(n_trips=3):
 def test_load_candidate_data_validates_and_converts_features(tmp_path):
     path = tmp_path / "candidates.csv"
     frame = sample_frame(n_trips=2)
+    frame["speed"] = frame["speed"].astype(object)
     frame.loc[0, "speed"] = "not-a-number"
     frame.to_csv(path, index=False)
 
