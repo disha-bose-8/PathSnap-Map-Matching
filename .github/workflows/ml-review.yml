@@ -1,0 +1,43 @@
+name: ML review pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "results/*_candidates.csv"
+      - "results/all_train_candidates.csv"
+      - "requirements.txt"
+
+jobs:
+  model-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compare five baseline models
+        run: python -m src.compare_models
+      - name: Train final baseline model
+        run: python -m src.train
+      - name: Generate comparison visualisation
+        run: python -m src.plot_results
+      - name: Upload review outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: pathsnap-ml-review-results
+          path: |
+            results/model_comparison.csv
+            results/model_comparison.png
+            models/candidate_classifier.joblib
+            models/metadata.json
