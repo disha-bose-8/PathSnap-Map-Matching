@@ -57,6 +57,48 @@ This writes per-trip results to `results/hmm_comparison.csv`. Review the
 evaluator's official route-scoring rule before presenting the spatial proxy
 accuracy as a final score.
 
+
+## Person 2 — Candidate classifier model comparison
+
+The following table records the offline comparison performed for model selection
+using the supplied `all_train_candidates.csv` dataset. All five models were
+scored on the same held-out set of **186,368 candidate rows from 10 trips**.
+
+| Rank | Model | Accuracy | Precision | Recall | Macro F1 | Top-1 Accuracy | Log Loss |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1 | **HistGradientBoosting** | **93.14%** | **66.99%** | **62.51%** | **80.44%** | **66.17%** | **0.1786** |
+| 2 | Random Forest | 92.30% | 62.79% | 57.43% | 77.87% | 59.92% | 0.2854 |
+| 3 | KNN | 91.08% | 55.33% | 58.38% | 75.92% | 56.54% | 0.7105 |
+| 4 | Decision Tree | 88.14% | 42.84% | 53.88% | 70.52% | 53.67% | 4.2755 |
+| 5 | Logistic Regression | 70.08% | 24.16% | 92.39% | 59.28% | 61.68% | 0.5418 |
+
+### Evaluation setup
+
+| Item | Details |
+|---|---|
+| Dataset size | 1,667,336 candidate rows across 80 trips |
+| Split | 70 training trips; 10 held-out trips |
+| Held-out rows | 186,368 |
+| Features | `distance_to_road`, `heading_difference`, `speed`, `time_difference` |
+| Target | `label` |
+| Grouping key | `trip_id` |
+| Split method | Trip-grouped holdout (`GroupShuffleSplit`), random state 42 |
+| Fit sample sizes | 250,000 rows for Logistic Regression, Decision Tree, Random Forest and HistGradientBoosting; 50,000 rows for KNN |
+
+**Selected model: HistGradientBoosting.** It achieved the highest macro F1
+(80.44%), accuracy (93.14%), precision (66.99%) and top-1 accuracy (66.17%),
+and the lowest log loss (0.1786) in this comparison.
+
+**Interpretation and limitations:** This is a single trip-grouped holdout
+comparison, not completed five-fold cross-validation. The labels are derived
+from the supplied reference-route data, so these metrics measure agreement
+with those labels rather than independently verified real-world map-matching
+accuracy. The dataset is imbalanced (88.73% negative and 11.27% positive
+labels), so accuracy should be read alongside precision, recall and macro F1.
+The saved HistGradientBoosting pipeline was subsequently refitted on all
+available rows from the 70 training trips; the table above reports the
+comparison-fit metrics, not a separate evaluation of that final refit.
+
 ## Implementation notes
 
 - `.arcs` row positions are retained as arc IDs; `.nodes` row positions are
