@@ -283,30 +283,43 @@ class RoadGraph:
 def route_continuity(
     graph: RoadGraph, track: pd.DataFrame, arc_ids: Sequence[int]
 ) -> float:
-    """Fraction of consecutive projected arcs connected in the directed graph."""
-    if len(arc_ids) <= 1:
+    """Fraction of consecutive projected arcs connected in the directed graph.
+
+    Project each observation once and use NumPy arrays in the transition loop.
+    This avoids duplicate projections and repeated pandas row lookups.
+    """
+    arc_array = np.asarray(arc_ids, dtype=int)
+    if arc_array.ndim != 1:
+        raise ValueError("arc_ids must be a one-dimensional sequence.")
+    if len(arc_array) <= 1:
         return 1.0
+    if len(track) != len(arc_array):
+        raise ValueError(
+            "track and arc_ids must contain the same number of observations."
+        )
+    if (arc_array < 0).any() or (arc_array >= graph.number_of_arcs).any():
+        raise ValueError("arc_ids contains an ID outside this road network.")
+
+    longitudes = pd.to_numeric(track["longitude"], errors="raise").to_numpy(dtype=float)
+    latitudes = pd.to_numeric(track["latitude"], errors="raise").to_numpy(dtype=float)
+    timestamps = pd.to_numeric(track["timestamp"], errors="raise").to_numpy(dtype=float)
+    if not all(np.isfinite(values).all() for values in (longitudes, latitudes, timestamps)):
+        raise ValueError("Track coordinates and timestamps must be finite.")
+
+    fractions = np.empty(len(arc_array), dtype=float)
+    for index, arc_id in enumerate(arc_array):
+        fractions[index], _ = graph.project_point_to_arc(
+            float(longitudes[index]), float(latitudes[index]), int(arc_id)
+        )
+
     connected = 0
-    for index in range(len(arc_ids) - 1):
-        elapsed = abs(
-            float(track.iloc[index + 1]["timestamp"])
-            - float(track.iloc[index]["timestamp"])
-        )
+    for index in range(len(arc_array) - 1):
+        elapsed = abs(float(timestamps[index + 1] - timestamps[index]))
         max_distance = 55.0 * max(elapsed, 1.0) + 100.0
-        previous_fraction, _ = graph.project_point_to_arc(
-            float(track.iloc[index]["longitude"]),
-            float(track.iloc[index]["latitude"]),
-            int(arc_ids[index]),
-        )
-        next_fraction, _ = graph.project_point_to_arc(
-            float(track.iloc[index + 1]["longitude"]),
-            float(track.iloc[index + 1]["latitude"]),
-            int(arc_ids[index + 1]),
-        )
         if graph.transition_distance_m(
-            int(arc_ids[index]), previous_fraction,
-            int(arc_ids[index + 1]), next_fraction,
+            int(arc_array[index]), float(fractions[index]),
+            int(arc_array[index + 1]), float(fractions[index + 1]),
             max_distance_m=max_distance,
         ) is not None:
             connected += 1
-    return connected / (len(arc_ids) - 1)
+    return connected / (len(arc_array) - 1)
