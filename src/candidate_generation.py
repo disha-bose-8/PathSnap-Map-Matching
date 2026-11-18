@@ -1,3 +1,4 @@
+
 import sys
 from pathlib import Path
 
@@ -5,65 +6,50 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-sys.path.insert(
-    0, str(Path(__file__).resolve().parent)
-)
-
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from data_loader import load_trip
 
 
-# --------------------------------
 # CONFIGURATION
-# --------------------------------
-
-TRIP_ID = "00000001"
+ROOT = Path(__file__).resolve().parents[1]
+DATA = ROOT / "data" / "Student folder"
+TRAIN_DIR = DATA / "train"
+OUTPUT_DIR = ROOT / "results"
 
 K = 8
 SEARCH_K = 20
 
+# First test with 2 trips.
+# Change to None to process all training trips.
+MAX_TRIPS = 2
+
 EARTH_RADIUS = 6371000
 
 
-# --------------------------------
 # GEOGRAPHICAL FUNCTIONS
-# --------------------------------
-
 def project_coordinates(lat, lon, ref_lat):
-
-    x = lon * 111320 * np.cos(
-        np.radians(ref_lat)
-    )
-
+    x = lon * 111320 * np.cos(np.radians(ref_lat))
     y = lat * 110540
-
     return x, y
 
 
 def bearing(lat1, lon1, lat2, lon2):
-
     lat1 = np.radians(lat1)
     lat2 = np.radians(lat2)
-
     dlon = np.radians(lon2 - lon1)
 
     y = np.sin(dlon) * np.cos(lat2)
-
     x = (
         np.cos(lat1) * np.sin(lat2)
-        -
-        np.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+        - np.sin(lat1) * np.cos(lat2) * np.cos(dlon)
     )
 
-    return (
-        np.degrees(np.arctan2(y, x)) + 360
-    ) % 360
+    return (np.degrees(np.arctan2(y, x)) + 360) % 360
 
 
 def haversine(lat1, lon1, lat2, lon2):
-
     lat1, lon1, lat2, lon2 = map(
-        np.radians,
-        [lat1, lon1, lat2, lon2]
+        np.radians, [lat1, lon1, lat2, lon2]
     )
 
     dlat = lat2 - lat1
@@ -71,23 +57,13 @@ def haversine(lat1, lon1, lat2, lon2):
 
     a = (
         np.sin(dlat / 2) ** 2
-        +
-        np.cos(lat1)
-        * np.cos(lat2)
-        * np.sin(dlon / 2) ** 2
+        + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
     )
 
-    return 2 * EARTH_RADIUS * np.arcsin(
-        np.sqrt(a)
-    )
+    return 2 * EARTH_RADIUS * np.arcsin(np.sqrt(a))
 
-
-# --------------------------------
-# POINT TO ROAD DISTANCE
-# --------------------------------
 
 def point_to_segment_distance(px, py, ax, ay, bx, by):
-
     dx = bx - ax
     dy = by - ay
 
@@ -96,292 +72,232 @@ def point_to_segment_distance(px, py, ax, ay, bx, by):
     if denominator == 0:
         return np.hypot(px - ax, py - ay)
 
-    t = (
-        (px - ax) * dx
-        +
-        (py - ay) * dy
-    ) / denominator
-
+    t = ((px - ax) * dx + (py - ay) * dy) / denominator
     t = np.clip(t, 0, 1)
 
     nearest_x = ax + t * dx
     nearest_y = ay + t * dy
 
-    return np.hypot(
-        px - nearest_x,
-        py - nearest_y
-    )
+    return np.hypot(px - nearest_x, py - nearest_y)
 
 
-# --------------------------------
-# LOAD DATA
-# --------------------------------
+# PROCESS ONE TRIP
+def generate_candidates(trip_id):
 
-track, nodes, arcs, route = load_trip(
-    "train", TRIP_ID
-)
+    track, nodes, arcs, route = load_trip("train", trip_id)
 
-# Node IDs correspond to row indices.
-edge_start = arcs["from_node"].to_numpy(dtype=int)
-edge_end = arcs["to_node"].to_numpy(dtype=int)
+    if track.empty or nodes.empty or arcs.empty or route.empty:
+        raise ValueError(f"Empty data found in trip {trip_id}")
 
-lat_a = nodes.iloc[edge_start]["latitude"].to_numpy()
-lon_a = nodes.iloc[edge_start]["longitude"].to_numpy()
+    edge_start = arcs["from_node"].to_numpy(dtype=int)
+    edge_end = arcs["to_node"].to_numpy(dtype=int)
 
-lat_b = nodes.iloc[edge_end]["latitude"].to_numpy()
-lon_b = nodes.iloc[edge_end]["longitude"].to_numpy()
+    if (
+        edge_start.min() < 0 or edge_end.min() < 0
+        or edge_start.max() >= len(nodes)
+        or edge_end.max() >= len(nodes)
+    ):
+        raise ValueError(f"Invalid node IDs in trip {trip_id}")
 
-ref_lat = track["latitude"].mean()
+    lat_a = nodes.iloc[edge_start]["latitude"].to_numpy()
+    lon_a = nodes.iloc[edge_start]["longitude"].to_numpy()
+    lat_b = nodes.iloc[edge_end]["latitude"].to_numpy()
+    lon_b = nodes.iloc[edge_end]["longitude"].to_numpy()
 
+    ref_lat = track["latitude"].mean()
 
-# Project road endpoints
+    ax, ay = project_coordinates(lat_a, lon_a, ref_lat)
+    bx, by = project_coordinates(lat_b, lon_b, ref_lat)
 
-ax, ay = project_coordinates(
-    lat_a, lon_a, ref_lat
-)
-
-bx, by = project_coordinates(
-    lat_b, lon_b, ref_lat
-)
-
-mid_x = (ax + bx) / 2
-mid_y = (ay + by) / 2
-
-
-# Build spatial index
-
-midpoints = np.column_stack(
-    [mid_x, mid_y]
-)
-
-tree = cKDTree(midpoints)
-
-number_of_arcs = len(arcs)
-
-search_k = min(SEARCH_K, number_of_arcs)
-candidate_k = min(K, number_of_arcs)
-
-
-# --------------------------------
-# GPS FEATURES
-# --------------------------------
-
-gps_x, gps_y = project_coordinates(
-    track["latitude"].to_numpy(),
-    track["longitude"].to_numpy(),
-    ref_lat
-)
-
-timestamps = track["timestamp"].to_numpy()
-
-gps_lat = track["latitude"].to_numpy()
-gps_lon = track["longitude"].to_numpy()
-
-time_gaps = np.diff(timestamps, prepend=timestamps[0])
-
-speeds = np.zeros(len(track))
-
-headings = np.zeros(len(track))
-
-for i in range(len(track)):
-
-    if i < len(track) - 1:
-        j = i + 1
-    else:
-        j = max(0, i - 1)
-
-    dt = abs(timestamps[j] - timestamps[i])
-
-    if dt > 0:
-
-        distance = haversine(
-            gps_lat[i], gps_lon[i],
-            gps_lat[j], gps_lon[j]
-        )
-
-        speeds[i] = distance / dt
-
-    headings[i] = bearing(
-        gps_lat[i], gps_lon[i],
-        gps_lat[j], gps_lon[j]
-    )
-
-
-# --------------------------------
-# REFERENCE LABELS
-# --------------------------------
-
-# These labels use the nearest reference-route
-# arc spatially. They are provisional heuristic
-# labels, not guaranteed temporal ground truth.
-
-reference_ids = np.unique(
-    route["arc_id"].to_numpy(dtype=int)
-)
-
-reference_ids = reference_ids[
-    (reference_ids >= 0)
-    &
-    (reference_ids < number_of_arcs)
-]
-
-ref_labels = []
-
-for i in range(len(track)):
-
-    distances = np.array([
-        point_to_segment_distance(
-            gps_x[i], gps_y[i],
-            ax[r], ay[r],
-            bx[r], by[r]
-        )
-        for r in reference_ids
+    midpoints = np.column_stack([
+        (ax + bx) / 2,
+        (ay + by) / 2
     ])
 
-    nearest_reference_arc = reference_ids[
-        np.argmin(distances)
+    tree = cKDTree(midpoints)
+
+    gps_lat = track["latitude"].to_numpy()
+    gps_lon = track["longitude"].to_numpy()
+
+    gps_x, gps_y = project_coordinates(
+        gps_lat, gps_lon, ref_lat
+    )
+
+    timestamps = track["timestamp"].to_numpy()
+    time_gaps = np.diff(timestamps, prepend=timestamps[0])
+
+    speeds = np.zeros(len(track))
+    headings = np.zeros(len(track))
+
+    for i in range(len(track)):
+
+        if i < len(track) - 1:
+            j = i + 1
+            start, end = i, j
+        elif i > 0:
+            j = i - 1
+            start, end = j, i
+        else:
+            continue
+
+        dt = abs(timestamps[j] - timestamps[i])
+
+        if dt > 0:
+            distance = haversine(
+                gps_lat[start], gps_lon[start],
+                gps_lat[end], gps_lon[end]
+            )
+            speeds[i] = distance / dt
+
+        headings[i] = bearing(
+            gps_lat[start], gps_lon[start],
+            gps_lat[end], gps_lon[end]
+        )
+
+    # PROVISIONAL REFERENCE LABELS
+    reference_ids = np.unique(route["arc_id"].to_numpy(dtype=int))
+
+    reference_ids = reference_ids[
+        (reference_ids >= 0) & (reference_ids < len(arcs))
     ]
 
-    ref_labels.append(nearest_reference_arc)
+    if len(reference_ids) == 0:
+        raise ValueError(f"No valid reference arcs in trip {trip_id}")
 
+    ref_labels = []
 
-# --------------------------------
-# CANDIDATE GENERATION
-# --------------------------------
+    for i in range(len(track)):
+        distances = np.array([
+            point_to_segment_distance(
+                gps_x[i], gps_y[i],
+                ax[r], ay[r], bx[r], by[r]
+            )
+            for r in reference_ids
+        ])
 
-records = []
+        ref_labels.append(reference_ids[np.argmin(distances)])
 
-for i in range(len(track)):
+    # CANDIDATE GENERATION
+    records = []
+    search_k = min(SEARCH_K, len(arcs))
+    candidate_k = min(K, len(arcs))
 
-    # Find nearby road-segment midpoints
-    _, nearby_ids = tree.query(
-        [gps_x[i], gps_y[i]],
-        k=search_k
-    )
+    for i in range(len(track)):
 
-    nearby_ids = np.atleast_1d(
-        nearby_ids
-    ).astype(int)
-
-    # Calculate exact point-to-segment distances
-    distances = []
-
-    for arc_id in nearby_ids:
-
-        d = point_to_segment_distance(
-            gps_x[i], gps_y[i],
-            ax[arc_id], ay[arc_id],
-            bx[arc_id], by[arc_id]
+        _, nearby_ids = tree.query(
+            [gps_x[i], gps_y[i]], k=search_k
         )
 
-        distances.append(d)
+        nearby_ids = np.atleast_1d(nearby_ids).astype(int)
 
-    distances = np.array(distances)
+        distances = np.array([
+            point_to_segment_distance(
+                gps_x[i], gps_y[i],
+                ax[r], ay[r], bx[r], by[r]
+            )
+            for r in nearby_ids
+        ])
 
-    # Select K closest candidates
-    order = np.argsort(distances)[:candidate_k]
+        order = np.argsort(distances)[:candidate_k]
 
-    selected_ids = nearby_ids[order]
-    selected_distances = distances[order]
+        for position in order:
+            arc_id = nearby_ids[position]
+            distance = distances[position]
 
-    for arc_id, distance in zip(
-        selected_ids,
-        selected_distances
-    ):
-
-        road_heading = bearing(
-            lat_a[arc_id],
-            lon_a[arc_id],
-            lat_b[arc_id],
-            lon_b[arc_id]
-        )
-
-        heading_difference = abs(
-            headings[i] - road_heading
-        )
-
-        heading_difference = min(
-            heading_difference,
-            360 - heading_difference
-        )
-
-        records.append({
-
-            "trip_id": TRIP_ID,
-
-            "gps_index": i,
-
-            "candidate_arc_id": int(arc_id),
-
-            "distance": float(distance),
-
-            "heading_diff": float(
-                heading_difference
-            ),
-
-            "speed": float(speeds[i]),
-
-            "time_gap": float(time_gaps[i]),
-
-            "label": int(
-                arc_id == ref_labels[i]
+            road_heading = bearing(
+                lat_a[arc_id], lon_a[arc_id],
+                lat_b[arc_id], lon_b[arc_id]
             )
 
-        })
+            heading_diff = abs(headings[i] - road_heading)
+            heading_diff = min(heading_diff, 360 - heading_diff)
 
+            records.append({
+                "trip_id": trip_id,
+                "gps_point_id": i,
+                "candidate_road_id": int(arc_id),
+                "distance_to_road": float(distance),
+                "heading_difference": float(heading_diff),
+                "speed": float(speeds[i]),
+                "time_difference": float(time_gaps[i]),
+                "label": int(arc_id == ref_labels[i])
+            })
 
-# --------------------------------
-# SAVE OUTPUT
-# --------------------------------
+    candidates = pd.DataFrame(records)
 
-candidates = pd.DataFrame(records)
-
-output_dir = (
-    Path(__file__).resolve().parents[1]
-    / "results"
-)
-
-output_dir.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-output_file = (
-    output_dir / f"{TRIP_ID}_candidates.csv"
-)
-
-candidates.to_csv(
-    output_file,
-    index=False
-)
-
-
-# --------------------------------
-# SUMMARY
-# --------------------------------
-
-candidate_recall = np.mean([
-    ref_labels[i] in set(
-        candidates.loc[
-            candidates["gps_index"] == i,
-            "candidate_arc_id"
-        ]
+    # Provisional candidate recall
+    candidate_sets = (
+        candidates.groupby("gps_point_id")["candidate_road_id"]
+        .apply(set)
     )
-    for i in range(len(track))
-])
 
-print("\nCANDIDATE GENERATION COMPLETE")
+    recall = np.mean([
+        ref_labels[i] in candidate_sets.get(i, set())
+        for i in range(len(track))
+    ])
 
-print("GPS observations:", len(track))
+    print(
+        f"{trip_id}: GPS={len(track)}, "
+        f"candidates={len(candidates)}, "
+        f"provisional recall={recall:.4f}"
+    )
 
-print("Total candidates:", len(candidates))
+    return candidates, recall
 
-print("Features:")
-print(candidates.head())
 
-print(
-    "Provisional candidate recall:",
-    round(candidate_recall, 4)
-)
+# PROCESS TRAINING TRIPS
+def main():
 
-print("Saved to:", output_file)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    trip_folders = sorted([
+        folder for folder in TRAIN_DIR.iterdir()
+        if folder.is_dir()
+    ])
+
+    if MAX_TRIPS is not None:
+        trip_folders = trip_folders[:MAX_TRIPS]
+
+    all_candidates = []
+    summaries = []
+
+    for folder in trip_folders:
+
+        trip_id = folder.name
+
+        try:
+            candidates, recall = generate_candidates(trip_id)
+
+            all_candidates.append(candidates)
+
+            summaries.append({
+                "trip_id": trip_id,
+                "gps_observations": candidates["gps_point_id"].nunique(),
+                "candidate_rows": len(candidates),
+                "provisional_recall": recall
+            })
+
+        except Exception as error:
+            print(f"ERROR processing {trip_id}: {error}")
+
+    if not all_candidates:
+        print("No candidate datasets were generated.")
+        return
+
+    combined = pd.concat(all_candidates, ignore_index=True)
+
+    combined_file = OUTPUT_DIR / "all_train_candidates.csv"
+    summary_file = OUTPUT_DIR / "candidate_generation_summary.csv"
+
+    combined.to_csv(combined_file, index=False)
+    pd.DataFrame(summaries).to_csv(summary_file, index=False)
+
+    print("\nCANDIDATE GENERATION FINISHED")
+    print("Trips processed:", len(all_candidates))
+    print("Total candidate rows:", len(combined))
+    print("Combined dataset:", combined_file)
+    print("Summary:", summary_file)
+
+
+if __name__ == "__main__":
+    main()
