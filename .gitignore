@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local model artifacts (regenerate with: python -m src.train)
+models/
+*.joblib
+
+# Generated evaluation outputs
+results/evaluation.json
+results/hmm_comparison.csv
+results/review1_tables.md
+
+# Local environment
+.env
