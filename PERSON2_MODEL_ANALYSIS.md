@@ -78,9 +78,12 @@ All five models were scored on the same held-out rows. Different fitting sample 
 |---|---|
 | Class distribution | 88.73% negative labels; 11.27% positive labels. |
 | Missing values | 0 in the inspected dataset. |
-| Validation design | One trip-grouped holdout comparison; five-fold cross-validation was not completed. |
+| Validation design | The five-model comparison used one trip-grouped holdout. A separate five-fold GroupKFold search tuned HistGradientBoosting on a 250,000-row sample from the 70 training trips; a full five-fold comparison of all five models was not completed. |
 | Label meaning | Labels are derived from the supplied reference-route data. |
 | Metric interpretation | Scores measure agreement with supplied labels, not independently verified real-world map-matching accuracy. |
+
+Person 3's Optuna search and the separate tuned-model holdout and student-test
+route results are recorded in [PERSON3_RESULTS.md](PERSON3_RESULTS.md).
 
 ## 7. Review summary
 

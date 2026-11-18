@@ -57,6 +57,26 @@ This writes per-trip results to `results/hmm_comparison.csv`. Review the
 evaluator's official route-scoring rule before presenting the spatial proxy
 accuracy as a final score.
 
+To tune the selected HistGradientBoosting model and train the API artifact,
+run these commands in order:
+
+```powershell
+python -m src.bayesian_optimization
+python -m src.train
+python -m src.evaluation
+```
+
+Optuna uses five-fold `GroupKFold` on the 70 training trips and reserves the
+10-trip holdout. Its default search runs 20 trials on a reproducible sample of
+up to 250,000 rows. `src.train` reads the best parameters from
+`results/bayesian_optimization.json` when that file exists. The saved model is
+trained on the 70 training trips; `src.evaluation` reports the untouched
+holdout result. Set `PATHSNAP_OPTUNA_TRIALS` and
+`PATHSNAP_OPTUNA_MAX_ROWS` to adjust the search budget.
+
+The recorded tuning, holdout, and student-test route comparison results are in
+[PERSON3_RESULTS.md](PERSON3_RESULTS.md).
+
 
 ## Person 2 — Candidate classifier model comparison
 

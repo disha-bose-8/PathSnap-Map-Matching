@@ -17,6 +17,18 @@ pip install -r requirements.txt
 
 The trained model is a local artifact and is intentionally not committed to Git. The candidate dataset archive is already in `results/all_train_candidates.zip`.
 
+Tune the selected HistGradientBoosting model before fitting when the demo
+schedule allows it. This reserves the 10-trip holdout and searches only within
+the other 70 trips:
+
+```powershell
+python -m src.bayesian_optimization
+```
+
+The training script automatically uses the saved Optuna parameters when they
+are available. The default search uses 20 trials and a proportional sample of
+up to 250,000 rows to keep runtime manageable.
+
 ```powershell
 python -m src.train
 ```

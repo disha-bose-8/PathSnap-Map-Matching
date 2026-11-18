@@ -61,11 +61,11 @@ The comparison script saves results/model_comparison.csv. The plot script create
 
 ### Final training and optimisation
 
-The holdout evaluation fits a baseline Random Forest on the 70 training trips and reports results only on the untouched 10-trip holdout. After the holdout result is recorded, the final training script fits a deployment Random Forest on all 80 available labelled trips and saves:
+The holdout evaluation fits the selected HistGradientBoosting model on the 70 training trips and reports results only on the untouched 10-trip holdout. Optuna tunes its hyperparameters with five-fold GroupKFold on those same 70 trips. The final training script uses the saved Optuna parameters when available and refits the model on the 70 training trips, keeping the 10-trip holdout untouched. It saves:
 - models/candidate_classifier.joblib
 - models/metadata.json
 
-Optuna uses Bayesian optimisation to search Random Forest hyperparameters against grouped-CV Macro F1. Run it only after enough independent trip groups and trustworthy labels are available; its output is results/bayesian_optimization.json and results/optuna_trials.csv.
+Optuna uses Bayesian optimisation to search HistGradientBoosting hyperparameters against grouped-CV Macro F1. By default, the search uses a reproducible proportional sample of up to 250,000 rows from the 70 training trips and runs 20 trials. Its output is `results/bayesian_optimization.json` and `results/optuna_trials.csv`; the deployment training script reads the saved best parameters.
 
 ## 3. Commands for a live demonstration
 
@@ -75,29 +75,28 @@ Run from the repository root:
 pip install -r requirements.txt
 python -m pytest -q
 python -m src.compare_models
-python -m src.evaluation
+python -m src.bayesian_optimization
 python -m src.train
+python -m src.evaluation
 python -m src.plot_results
 ```
 
-For Bayesian optimisation after the team has added enough independently labelled trips:
-
-```bash
-python -m src.bayesian_optimization
-```
+The supplied route-derived labels are provisional, so report these metrics as
+agreement with the supplied labels rather than independent ground-truth
+accuracy.
 
 ## 4. Short presentation script
 
 "We first preprocess each trip by loading GPS observations and the road network. For every GPS point, we generate nearby road-segment candidates using a spatial KD-tree. We then engineer four features: distance to the road, heading difference, speed, and time gap. These features describe spatial closeness, direction, and movement behaviour.
 
-For model selection, we compare Logistic Regression, KNN, Decision Tree, Random Forest, and HistGradientBoosting. We use Macro F1, precision, recall, Top-1 accuracy, and log loss. We use GroupKFold by trip ID rather than randomly splitting rows, so points from the same trip cannot appear in both training and validation. We select a model based on validation performance and then train the final classifier on the available training data. We also prepared Optuna Bayesian optimisation for Random Forest hyperparameters.
+For model selection, we compare Logistic Regression, KNN, Decision Tree, Random Forest, and HistGradientBoosting. We use Macro F1, precision, recall, Top-1 accuracy, and log loss. We keep trips together in validation and use Optuna with five-fold GroupKFold to tune the selected HistGradientBoosting model without using the 10-trip holdout. We then fit the final model on the 70 training trips and evaluate it on the reserved holdout.
 
 At this stage, the candidate labels come from the supplied reference route, so we describe them as provisional labels. We need more independently verified trips before claiming final generalisation or the 10-student testing result."
 
 ## 5. Current evidence and limitations
 
-- The supplied training candidate CSV contains 1,667,336 rows across 80 trips (80 trip groups).
-- The automated unit-test workflow has passed for the latest test commit.
-- A separate GitHub Actions workflow runs baseline model comparison, final baseline training, and creates a downloadable artifact.
-- Do not report model scores until the ML review workflow completes and its artifact has been inspected.
+- The full candidate dataset contains 1,667,336 rows across 80 trips. The full CSV is in `results/all_train_candidates.zip`; the checked-in loose CSV is only a two-trip sample. The loader detects this and resolves the full archive.
+- The selected HistGradientBoosting model was tuned with 20 Optuna trials and five-fold trip-grouped validation on a proportional 250,000-row sample from the 70 training trips.
+- The tuned model was evaluated on the untouched 10-trip holdout. Tuning, holdout, and HMM comparison results are recorded in [PERSON3_RESULTS.md](PERSON3_RESULTS.md).
+- The test workflow exists, but its status for the current code revision has not been confirmed in this guide.
 - The 10 held-out trip evaluation is a trip-level holdout; it is not proof that the trips correspond to ten different students. Confirm student ownership before calling it a 10-student test.

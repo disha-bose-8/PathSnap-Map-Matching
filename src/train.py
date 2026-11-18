@@ -2,7 +2,6 @@
 """Train the selected HistGradientBoosting model on the 70-trip training split."""
 from pathlib import Path
 import json
-import warnings
 
 import joblib
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -17,6 +16,43 @@ from src.ml_utils import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+TUNING_RESULTS = ROOT / "results" / "bayesian_optimization.json"
+TUNABLE_PARAMETERS = {
+    "learning_rate",
+    "max_iter",
+    "max_leaf_nodes",
+    "max_depth",
+    "min_samples_leaf",
+    "l2_regularization",
+    "max_bins",
+}
+
+
+def load_tuned_parameters() -> dict:
+    """Load Optuna parameters for the selected HistGradientBoosting model."""
+    if not TUNING_RESULTS.is_file():
+        print("No Optuna results found; using HistGradientBoosting defaults.")
+        return {}
+
+    tuning = json.loads(TUNING_RESULTS.read_text())
+    if tuning.get("model") != "HistGradientBoostingClassifier":
+        raise ValueError(
+            "results/bayesian_optimization.json must contain tuning results "
+            "for HistGradientBoostingClassifier."
+        )
+    parameters = tuning.get("best_params")
+    if not isinstance(parameters, dict):
+        raise ValueError("Optuna results are missing a best_params object.")
+    unexpected = set(parameters) - TUNABLE_PARAMETERS
+    if unexpected:
+        raise ValueError(
+            f"Optuna results contain unsupported parameters: {sorted(unexpected)}"
+        )
+    print(
+        "Using Optuna parameters with grouped-CV Macro F1 "
+        f"{tuning.get('best_macro_f1', float('nan')):.4f}."
+    )
+    return parameters
 
 
 def main():
@@ -38,9 +74,14 @@ def main():
     print(f"Training rows: {len(train_data)}")
     print(f"Test rows (not used for fitting): {len(test_data)}")
 
+    tuned_parameters = load_tuned_parameters()
     model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
-        ("classifier", HistGradientBoostingClassifier(random_state=42)),
+        ("classifier", HistGradientBoostingClassifier(
+            **tuned_parameters,
+            random_state=42,
+            early_stopping=False,
+        )),
     ])
 
     # Fit ONLY on the 70 training trips.
@@ -59,6 +100,11 @@ def main():
         "held_out_rows": int(len(test_data)),
         "held_out_trips": int(test_trips),
         "random_state": 42,
+        "tuned_parameters": tuned_parameters,
+        "tuning_results": (
+            str(TUNING_RESULTS.relative_to(ROOT))
+            if TUNING_RESULTS.is_file() else None
+        ),
         "label_note": (
             "Candidate labels are derived heuristically from reference-route "
             "data and are not independently verified ground truth."

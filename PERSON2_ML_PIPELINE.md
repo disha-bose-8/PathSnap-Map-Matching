@@ -1,7 +1,8 @@
 # Person 2 – Machine Learning Pipeline
 
 This contribution adds the candidate-classification utilities, baseline model
-comparison, held-out-trip evaluation, final model training, and Optuna tuning.
+comparison, held-out-trip evaluation, final HistGradientBoosting training, and
+Optuna tuning of the selected model.
 
 ## Expected candidate data
 
@@ -23,16 +24,26 @@ From the repository root:
 ```bash
 pip install -r requirements.txt
 python -m src.compare_models
-python -m src.evaluation
 python -m src.bayesian_optimization
 python -m src.train
+python -m src.evaluation
 python -m src.plot_results
 python -m pytest -q
 ```
 
-`compare_models` selects among the five baselines using grouped CV on the 70 training trips. `evaluation` fits a baseline Random Forest on those 70 trips and reports the untouched 10-trip holdout metrics. Optuna also tunes only on the 70 training trips. Finally, `train` fits the deployment model on all 80 trips after holdout evaluation has been recorded. Outputs are written under `results/` and the fitted model plus metadata are written under `models/`. The plotting script creates report-ready PNGs when
-comparison and Optuna result files exist. The unit tests run locally and also
-run automatically through GitHub Actions on pushes and pull requests.
+`compare_models` compares the five baselines with trip-grouped validation.
+`bayesian_optimization` reserves the same 10-trip holdout, then uses five-fold
+`GroupKFold` on the remaining 70 trips to tune HistGradientBoosting Macro F1.
+To keep the search practical, it uses a reproducible proportional sample of up
+to 250,000 rows while retaining every training trip. Set
+`PATHSNAP_OPTUNA_TRIALS` or `PATHSNAP_OPTUNA_MAX_ROWS` to change the default
+search budget. It writes `results/bayesian_optimization.json` and
+`results/optuna_trials.csv`. `train` reads the best parameters when that JSON
+exists, fits the deployment model on the 70 training trips, and saves the
+artifact plus metadata under `models/`. `evaluation` then evaluates that model
+on the untouched 10-trip holdout. The plotting script creates report-ready
+PNGs when comparison and Optuna result files exist. The unit tests also run
+automatically through GitHub Actions on pushes and pull requests.
 
 ## Important label and evaluation caveat
 

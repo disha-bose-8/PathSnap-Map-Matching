@@ -1,0 +1,22 @@
+{
+  "model": "HistGradientBoostingClassifier",
+  "objective": "mean 5-fold GroupKFold Macro F1",
+  "best_macro_f1": 0.75276249766036,
+  "best_params": {
+    "learning_rate": 0.07205895517548212,
+    "max_iter": 100,
+    "max_leaf_nodes": 47,
+    "max_depth": 3,
+    "min_samples_leaf": 70,
+    "l2_regularization": 1.0818600048869643e-06,
+    "max_bins": 64
+  },
+  "completed_trials": 20,
+  "training_rows_available": 1480968,
+  "tuning_rows_sampled": 250000,
+  "training_trip_count": 70,
+  "holdout_trips_reserved": 10,
+  "cv_splits": 5,
+  "random_state": 42,
+  "label_note": "Candidate labels are derived from the supplied reference-route data; metrics measure agreement with those provisional labels."
+}
