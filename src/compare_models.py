@@ -7,12 +7,10 @@ import pandas as pd
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, log_loss)
 
-from src.ml_utils import (FEATURES, load_candidate_data, make_group_splits, make_holdout_split, make_models, top1_accuracy)
+from src.ml_utils import (FEATURES, load_candidate_data, resolve_candidate_files, make_group_splits, make_holdout_split, make_models, top1_accuracy)
 
 ROOT = Path(__file__).resolve().parents[1]
-COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
-DATA_FILES = ([COMBINED_DATA] if COMBINED_DATA.exists()
-              else sorted((ROOT / "results").glob("*_candidates.csv")))
+DATA_FILES = resolve_candidate_files(ROOT)
 OUT = ROOT / "results"
 OUT.mkdir(exist_ok=True)
 
