@@ -15,7 +15,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -111,3 +111,26 @@ def top1_accuracy(data: pd.DataFrame, probabilities: np.ndarray) -> float:
         ["trip_id", "gps_index"]
     )["score"].idxmax()]
     return float(chosen["label"].mean()) if len(chosen) else float("nan")
+
+
+
+def make_holdout_split(data: pd.DataFrame, test_groups: int = 10,
+                       random_state: int = 42):
+    """Reserve whole trips for final testing; return positional train/test indices."""
+    groups = data["trip_id"].astype(str)
+    n_groups = groups.nunique()
+    if n_groups <= test_groups:
+        raise ValueError(
+            f"Need more than {test_groups} distinct trips; found {n_groups}."
+        )
+    splitter = GroupShuffleSplit(
+        n_splits=1, test_size=test_groups, random_state=random_state
+    )
+    train_idx, test_idx = next(splitter.split(data[FEATURES], data["label"], groups))
+    train_groups = set(groups.iloc[train_idx])
+    test_groups_found = set(groups.iloc[test_idx])
+    if train_groups & test_groups_found:
+        raise RuntimeError("Trip leakage detected between train and holdout sets.")
+    if data.iloc[train_idx]["label"].nunique() < 2 or data.iloc[test_idx]["label"].nunique() < 2:
+        raise ValueError("Both train and holdout partitions must contain both label classes.")
+    return train_idx, test_idx
