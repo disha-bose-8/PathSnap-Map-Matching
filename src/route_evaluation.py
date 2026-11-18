@@ -13,6 +13,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
+
 from src.hmm import decode_candidates
 from src.inference import (
     generate_inference_candidates,
@@ -47,7 +49,7 @@ def evaluate_partition(
         for folder in partition_dir.iterdir()
         if folder.is_dir() and (folder / f"{folder.name}.track").is_file()
     )
-    for trip_id in trip_ids:
+    for trip_id in tqdm(trip_ids, desc="Evaluating trips"):
         track, nodes, arcs, trip_dir = load_trip_inputs(
             data_root, partition, trip_id
         )
