@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, log_loss)
 
-from src.ml_utils import FEATURES, load_candidate_data, make_group_splits
+from src.ml_utils import FEATURES, load_candidate_data, make_holdout_split, top1_accuracy
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBINED_DATA = ROOT / "results" / "all_train_candidates.csv"
@@ -26,32 +26,44 @@ def evaluate_holdout(data: pd.DataFrame, test_indices, model):
         "recall": recall_score(y, pred, zero_division=0),
     }
     if hasattr(model, "predict_proba"):
-        metrics["log_loss"] = log_loss(y, model.predict_proba(X),
-                                       labels=model.classes_)
+        probabilities = model.predict_proba(X)
+        metrics["log_loss"] = log_loss(y, probabilities, labels=model.classes_)
+        metrics["top1_accuracy"] = top1_accuracy(test, probabilities[:, list(model.classes_).index(1)])
     return metrics
 
 
 def main():
     data = load_candidate_data(DATA_FILES)
-    splits = make_group_splits(data, n_splits=5)
-    rows = []
-    for fold, (train_idx, test_idx) in enumerate(splits, start=1):
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.impute import SimpleImputer
-        from sklearn.pipeline import Pipeline
-        model = Pipeline([
-            ("imputer", SimpleImputer(strategy="median")),
-            ("classifier", RandomForestClassifier(
-                n_estimators=300, class_weight="balanced_subsample",
-                random_state=42, n_jobs=-1,
-            )),
-        ])
-        train = data.iloc[train_idx]
-        model.fit(train[FEATURES], train["label"])
-        rows.append({"fold": fold, **evaluate_holdout(data, test_idx, model)})
+    train_idx, test_idx = make_holdout_split(data, test_groups=10, random_state=42)
+    train = data.iloc[train_idx]
+    test = data.iloc[test_idx]
+
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+    model = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("classifier", RandomForestClassifier(
+            n_estimators=300, class_weight="balanced_subsample",
+            random_state=42, n_jobs=-1,
+        )),
+    ])
+    model.fit(train[FEATURES], train["label"])
+    metrics = evaluate_holdout(data, test_idx, model)
+    summary = {
+        "protocol": "GroupShuffleSplit by trip_id; 10 held-out trips; random_state=42",
+        "training_trip_count": int(train["trip_id"].nunique()),
+        "heldout_trip_count": int(test["trip_id"].nunique()),
+        "heldout_trip_ids": sorted(test["trip_id"].astype(str).unique().tolist()),
+        "training_rows": int(len(train)),
+        "heldout_rows": int(len(test)),
+        "metrics": metrics,
+        "label_caveat": "Labels are provisional reference-route-derived labels; metrics measure agreement with these labels.",
+    }
     output = ROOT / "results" / "evaluation.json"
-    output.write_text(json.dumps(rows, indent=2))
-    print(json.dumps(rows, indent=2))
+    output.parent.mkdir(exist_ok=True)
+    output.write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2))
     print(f"Saved {output.relative_to(ROOT)}")
 
 
