@@ -110,3 +110,18 @@ def test_top1_accuracy_selects_highest_scoring_candidate():
     scores = np.where(frame["label"].to_numpy() == 1, 0.9, 0.1)
 
     assert top1_accuracy(frame, scores) == pytest.approx(1.0)
+
+
+def test_loader_normalises_person1_candidate_column_names(tmp_path):
+    path = tmp_path / "person1_candidates.csv"
+    frame = sample_frame(n_trips=2).rename(columns={
+        "gps_index": "gps_point_id",
+        "candidate_arc_id": "candidate_road_id",
+        "distance": "distance_to_road",
+        "heading_diff": "heading_difference",
+        "time_gap": "time_difference",
+    })
+    frame.to_csv(path, index=False)
+    loaded = load_candidate_data([path])
+    assert set(FEATURES).issubset(loaded.columns)
+    assert {"gps_index", "candidate_arc_id"}.issubset(loaded.columns)
